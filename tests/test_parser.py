@@ -234,64 +234,26 @@ class TestExtractIntroAuthor:
 
 
 class TestExtractLiteraryWorkQuotes:
-    def test_novel_with_quotes_section(self):
+    def test_literary_works_skipped(self):
+        """Literary work pages are currently skipped (person pages only)."""
         wikitext = """'''''Pride and Prejudice''''' (1813) is a novel by [[Jane Austen]].
 
 == Quotes ==
 * It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.
 ** Ch. 1
-
-* I could easily forgive his pride, if he had not mortified mine.
-** Elizabeth; Ch. 5
 """
         quotes = _extract_quotes_from_page("Pride and Prejudice", wikitext)
-        assert len(quotes) == 2
-        assert quotes[0].author == "Jane Austen"
-        assert quotes[0].source_work == "Pride and Prejudice"
-        assert "truth universally acknowledged" in quotes[0].text
+        assert len(quotes) == 0
 
-    def test_play_with_act_sections(self):
+    def test_plays_skipped(self):
+        """Play pages are currently skipped (person pages only)."""
         wikitext = """'''''Hamlet''''' is a revenge tragedy by [[William Shakespeare]].
 
 == Act I ==
 * Though yet of Hamlet our dear brother's death the memory be green.
-** '''Claudius'''
-
-== Act III ==
-* To be, or not to be, that is the question.
-** '''Hamlet''', Scene 1
 """
         quotes = _extract_quotes_from_page("Hamlet", wikitext)
-        assert len(quotes) == 2
-        assert quotes[0].author == "William Shakespeare"
-        assert quotes[0].source_work == "Hamlet"
-        assert quotes[1].source_work == "Hamlet"
-
-    def test_novel_with_part_sections(self):
-        wikitext = """'''''Nineteen Eighty-Four''''' is a dystopian novel by the English writer [[George Orwell]].
-
-== Part One ==
-* It was a bright cold day in April, and the clocks were striking thirteen.
-
-* War is peace. Freedom is slavery. Ignorance is strength.
-"""
-        quotes = _extract_quotes_from_page("Nineteen Eighty-Four", wikitext)
-        assert len(quotes) == 2
-        assert quotes[0].author == "George Orwell"
-        assert quotes[0].source_work == "Nineteen Eighty-Four"
-
-    def test_skips_quotes_about_section(self):
-        wikitext = """'''''Moby-Dick''''' (1851) is a novel by [[Herman Melville]].
-
-== Quotes ==
-* Call me Ishmael. Some years ago, never mind how long precisely.
-
-== Quotes about Moby-Dick ==
-* A great American novel that explores the depths of obsession.
-"""
-        quotes = _extract_quotes_from_page("Moby-Dick", wikitext)
-        assert len(quotes) == 1
-        assert "Call me Ishmael" in quotes[0].text
+        assert len(quotes) == 0
 
     def test_skips_theme_pages(self):
         wikitext = """'''Love''' is a complex emotion.

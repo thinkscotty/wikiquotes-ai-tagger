@@ -237,14 +237,11 @@ def _extract_quotes_from_page(title: str, wikitext: str) -> list[RawQuote]:
     if _is_theme_page(wikitext):
         return []
 
-    # Detect literary work pages and extract author from intro
-    intro_author = _extract_intro_author(wikitext)
-    is_literary_work = intro_author is not None
+    # Skip literary work pages (novels, plays, poems) — person pages only for now
+    if _extract_intro_author(wikitext) is not None:
+        return []
 
-    if is_literary_work:
-        author = intro_author
-    else:
-        author = title
+    author = title
 
     try:
         parsed = mwparserfromhell.parse(wikitext)
@@ -266,23 +263,14 @@ def _extract_quotes_from_page(title: str, wikitext: str) -> list[RawQuote]:
         if _should_skip_section(section_name):
             continue
 
-        # Determine if this section contains quotes
-        if is_literary_work:
-            # Accept standard quote sections AND structural sections (Act, Part, etc.)
-            if section_name not in QUOTE_SECTIONS and not _is_literary_section(section_name):
-                continue
-        else:
-            # Person pages: only accept known quote sections
-            if section_name not in QUOTE_SECTIONS:
-                continue
+        # Person pages: only accept known quote sections
+        if section_name not in QUOTE_SECTIONS:
+            continue
 
         has_valid_section = True
         confidence = _section_confidence(section_name)
 
         extracted = _extract_from_section(author, str(section), confidence)
-        if is_literary_work:
-            for q in extracted:
-                q.source_work = title
         quotes.extend(extracted)
 
     if not has_valid_section:
