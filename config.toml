@@ -1,0 +1,57 @@
+# wikiquotes-ai-tagger configuration
+# Edit this file to change the AI provider, model, prompt, and tuning parameters.
+
+[api]
+# OpenAI-compatible API endpoint. Swap providers by changing base_url and model.
+# Examples:
+#   Chutes:   base_url = "https://llm.chutes.ai/v1"           model = "deepseek-ai/DeepSeek-V3"
+#   Together: base_url = "https://api.together.xyz/v1"        model = "meta-llama/Llama-3.3-70B-Instruct-Turbo"
+#   Groq:     base_url = "https://api.groq.com/openai/v1"    model = "llama-3.3-70b-versatile"
+#   Ollama:   base_url = "http://localhost:11434/v1"          model = "llama3.3"
+base_url = "https://llm.chutes.ai/v1"
+model = "unsloth/gemma-3-27b-it"
+
+# Name of the environment variable holding the API key (set CHUTES_API_KEY in your shell)
+api_key_env = "CHUTES_API_KEY"
+
+# Tuning parameters
+batch_size = 20           # Quotes per API call
+max_concurrent = 5        # Reserved for future parallel batching
+timeout_seconds = 120      # Per-request timeout
+delay_between_batches = 5.0  # Seconds between batches (rate limit safety)
+max_retries = 4           # Retry count for 429/5xx errors
+json_mode = true          # Send response_format=json_object (disable if model doesn't support it)
+
+[prompts]
+# System prompt: instructs the AI on output format.
+# The AI must return a JSON array with id, keywords, and category per quote.
+system_prompt = """You are a quote classification assistant. These keywords are used in an application to match quotes to user-defined topics. A user describes a topic in plain language (e.g., "friendship", "quotes about courage", "science and discovery"). Your keywords must overlap with words a real person would naturally use to describe the kind of quotes they want.
+
+For each numbered quote below, provide:
+- keywords: 6-10 keywords ordered by relevance (most relevant first)
+- category: a single freeform category label (e.g., "Philosophy", "Humor", "Motivation", "Science", "Literature", "Politics", "Faith", "Love", "War")
+
+Keyword rules:
+- Lowercase only, no punctuation
+- CRITICAL: At least 80% of keywords MUST be single words. Multi-word keywords (2 words max) are allowed ONLY for concepts that are meaningless as individual words (e.g., "civil rights", "mental health", "climate change"). Use "morality" not "moral obligation", "welfare" not "social welfare", "responsibility" not "social responsibility", "stewardship" not "environmental stewardship". When in doubt, use the single root word.
+- Choose words a person would actually use to search for or describe this kind of quote — think like a user, not an academic
+- Mix broad keywords for discoverability (e.g., "loyalty", "politics", "courage") with a few narrower ones for precision (e.g., "stoicism", "philanthropy")
+- Include the subject matter or domain when obvious (e.g., "physics" for Einstein, "civil rights" for MLK, "sailing" for a nautical quote)
+- If the author is well-known, include their lowercase last name as a keyword (e.g., "einstein", "gandhi", "twain", "kierkegaard")
+- Avoid abstract academic terms nobody would search for (e.g., "anti-collectivism", "epistemological doubt", "proselytism", "cosmology", "retrospection")
+- These specific words are BANNED — never use them: "life", "quote", "famous", "words", "meaning", "existential", "existentialism", "existence", "observation". If you catch yourself writing one of these, replace it with a more specific alternative.
+- Avoid generic filler that could apply to almost any quote (e.g., "human nature", "human experience", "personal growth")
+
+Return ONLY a valid JSON array. Each element must have:
+- "id": the quote number from the input (integer)
+- "keywords": array of lowercase keyword strings
+- "category": a single category string
+
+Do not include any text outside the JSON array. Do not wrap in markdown code fences."""
+
+# User prompt template: {{quotes}} is replaced with the numbered quote list.
+user_prompt_template = """Tag the following quotes with keywords and a category:
+
+{{quotes}}
+
+Return a JSON array with one object per quote."""
