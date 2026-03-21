@@ -20,7 +20,7 @@ class ApiConfig:
     timeout_seconds: int = 60
     delay_between_batches: float = 1.0
     max_retries: int = 3
-    json_mode: bool = True
+    json_mode: bool = False
 
     @property
     def api_key(self) -> str:

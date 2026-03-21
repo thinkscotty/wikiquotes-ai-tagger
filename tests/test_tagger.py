@@ -102,6 +102,14 @@ class TestParseTagResponse:
         assert len(results) == 1
         assert results[0].quote_id == 99
 
+    def test_single_json_object(self):
+        """Some models return a single object instead of an array."""
+        response = '{"id": 1, "keywords": ["wisdom", "knowledge"], "category": "Philosophy"}'
+        results = _parse_tag_response(response, [42])
+        assert len(results) == 1
+        assert results[0].quote_id == 42
+        assert results[0].keywords == ["wisdom", "knowledge"]
+
 
 class TestBuildPrompt:
     def test_formats_quotes(self):

@@ -281,6 +281,15 @@ def _parse_tag_response(response_text: str, quote_ids: list[int]) -> list[TagRes
         text = re.sub(r"\n?```$", "", text)
         text = text.strip()
 
+    # Try parsing as a single JSON object first (some models return one object instead of an array)
+    try:
+        single = json.loads(text)
+        if isinstance(single, dict) and "id" in single:
+            # Wrap single object in a list
+            text = json.dumps([single])
+    except json.JSONDecodeError:
+        pass
+
     # Find JSON array bounds
     start = text.find("[")
     end = text.rfind("]")
