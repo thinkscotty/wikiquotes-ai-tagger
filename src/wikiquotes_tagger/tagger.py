@@ -44,6 +44,7 @@ def tag_quotes(
     *,
     batch_size_override: int | None = None,
     limit: int | None = None,
+    debug: bool = False,
 ) -> int:
     """Main entry point: tag untagged quotes in batches. Returns count tagged."""
     global _interrupted
@@ -132,6 +133,12 @@ def tag_quotes(
 
             # Parse response
             quote_ids = [q["id"] for q in quotes]
+
+            if debug:
+                click.echo(f"\n--- DEBUG: Raw API response (batch {batch_num}) ---")
+                click.echo(response_text[:2000])
+                click.echo(f"--- END DEBUG (quote_ids: {quote_ids[:5]}...) ---\n")
+
             results = _parse_tag_response(response_text, quote_ids)
 
             # Apply tags to database
