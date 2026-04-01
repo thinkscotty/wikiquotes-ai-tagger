@@ -74,6 +74,40 @@ def tag(ctx: click.Context, batch_size: int | None, limit: int | None, debug: bo
 
 
 @cli.command()
+@click.option("--confirm", is_flag=True, help="Skip confirmation prompt.")
+@click.pass_context
+def reset(ctx: click.Context, confirm: bool) -> None:
+    """Reset all tagged/errored quotes to 'parsed' for re-tagging."""
+    config = ctx.obj["config"]
+    db.init_db(config.db_path)
+    conn = db.get_connection(config.db_path)
+
+    tagged = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'tagged'").fetchone()[0]
+    errored = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'error'").fetchone()[0]
+    total = tagged + errored
+
+    if total == 0:
+        click.echo("No tagged or errored quotes to reset.")
+        conn.close()
+        return
+
+    if not confirm:
+        msg = f"Reset {tagged:,} tagged"
+        if errored > 0:
+            msg += f" and {errored:,} errored"
+        msg += " quotes to 'parsed'?"
+        click.confirm(msg, abort=True)
+
+    tagged_count, errored_count = db.reset_tagged(conn)
+    conn.close()
+
+    click.echo(f"Reset {tagged_count:,} tagged quotes to 'parsed'.")
+    if errored_count > 0:
+        click.echo(f"Reset {errored_count:,} errored quotes to 'parsed'.")
+    click.echo("Run 'wikiquotes-tagger tag' to re-tag all quotes.")
+
+
+@cli.command()
 @click.pass_context
 def stats(ctx: click.Context) -> None:
     """Show database statistics and tagging progress."""

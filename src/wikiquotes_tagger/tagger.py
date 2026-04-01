@@ -22,6 +22,9 @@ log = logging.getLogger(__name__)
 # Flag for graceful Ctrl+C handling
 _interrupted = False
 
+# Valid author_type values
+VALID_AUTHOR_TYPES = frozenset({"person", "work", "concept", "religious_text", "fictional"})
+
 
 def _handle_sigint(signum: int, frame: object) -> None:
     """Set interrupt flag on first Ctrl+C. Exit on second."""
@@ -36,7 +39,9 @@ def _handle_sigint(signum: int, frame: object) -> None:
 class TagResult:
     quote_id: int
     keywords: list[str]
-    category: str
+    categories: list[str]  # 1-3 categories from canonical list, best-fit first
+    author_type: str  # "person", "work", "concept", "religious_text", "fictional"
+    religious_sentiment: str | None  # JSON string or None
 
 
 def tag_quotes(
@@ -187,6 +192,7 @@ def tag_quotes(
 def _build_prompt(config: AppConfig, quotes: list[dict]) -> tuple[str, str]:
     """Build system and user messages for the AI API call.
 
+    Injects the category list into the system prompt via {{categories}} placeholder.
     Returns (system_message, user_message).
     """
     lines = []
@@ -198,7 +204,13 @@ def _build_prompt(config: AppConfig, quotes: list[dict]) -> tuple[str, str]:
     quotes_text = "\n".join(lines)
     user_msg = config.prompts.user_prompt_template.replace("{{quotes}}", quotes_text)
 
-    return config.prompts.system_prompt, user_msg
+    # Inject categories into system prompt
+    system_msg = config.prompts.system_prompt
+    if config.categories:
+        categories_str = ", ".join(config.categories)
+        system_msg = system_msg.replace("{{categories}}", categories_str)
+
+    return system_msg, user_msg
 
 
 def _call_ai_api(
@@ -358,16 +370,42 @@ def _parse_tag_response(response_text: str, quote_ids: list[int]) -> list[TagRes
         if not keywords:
             continue
 
-        # Extract category
-        category = item.get("category", "")
-        if not isinstance(category, str) or not category.strip():
+        # Extract categories (supports both "categories" array and legacy "category" string)
+        raw_categories = item.get("categories", item.get("category"))
+        if isinstance(raw_categories, str):
+            raw_categories = [raw_categories]  # wrap legacy single string
+        if not isinstance(raw_categories, list) or not raw_categories:
             continue
-        category = category.strip()
+        categories = [str(c).strip() for c in raw_categories if isinstance(c, str) and str(c).strip()]
+        if not categories:
+            continue
+        categories = categories[:3]  # enforce max 3
+
+        # Extract author_type (default to "person" if missing or invalid)
+        author_type = item.get("author_type", "person")
+        if not isinstance(author_type, str) or author_type not in VALID_AUTHOR_TYPES:
+            author_type = "person"
+
+        # Extract religious_sentiment (optional, only for religious quotes)
+        religious_sentiment = None
+        raw_sentiment = item.get("religious_sentiment")
+        if raw_sentiment and isinstance(raw_sentiment, dict):
+            # Validate: values must be "positive", "neutral", or "critical"
+            valid_sentiments = {"positive", "neutral", "critical"}
+            cleaned = {
+                str(k).lower().strip(): str(v).lower().strip()
+                for k, v in raw_sentiment.items()
+                if str(v).lower().strip() in valid_sentiments
+            }
+            if cleaned:
+                religious_sentiment = json.dumps(cleaned)
 
         results.append(TagResult(
             quote_id=quote_ids[idx],
             keywords=keywords,
-            category=category,
+            categories=categories,
+            author_type=author_type,
+            religious_sentiment=religious_sentiment,
         ))
 
     return results
@@ -385,8 +423,10 @@ def _apply_tags(
             conn,
             result.quote_id,
             keywords=result.keywords,
-            category=result.category,
+            categories=result.categories,
             batch_id=batch_id,
+            author_type=result.author_type,
+            religious_sentiment=result.religious_sentiment,
         ):
             count += 1
     return count

@@ -8,6 +8,32 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 CONFIG_DEFAULT_PATH = Path("config.toml")
+CATEGORIES_DEFAULT_PATH = Path("categories.txt")
+
+
+def load_categories(path: Path = CATEGORIES_DEFAULT_PATH) -> list[str]:
+    """Load the canonical category list from a text file.
+
+    Lines starting with # are comments. Blank lines are ignored.
+    Returns a sorted list of category names.
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Categories file not found: {path}\n"
+            "Create a categories.txt with one category per line."
+        )
+
+    categories = []
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#"):
+                categories.append(line)
+
+    if not categories:
+        raise ValueError(f"Categories file is empty: {path}")
+
+    return sorted(categories)
 
 
 @dataclass(frozen=True)
@@ -60,6 +86,7 @@ class AppConfig:
     prompts: PromptConfig = field(default_factory=PromptConfig)
     data_dir: Path = field(default_factory=lambda: Path("data"))
     db_path: Path = field(default_factory=lambda: Path("data/quotes.db"))
+    categories: tuple[str, ...] = ()
 
 
 def load_config(path: Path = CONFIG_DEFAULT_PATH) -> AppConfig:
@@ -90,9 +117,19 @@ def load_config(path: Path = CONFIG_DEFAULT_PATH) -> AppConfig:
         user_prompt_template=prompts_raw.get("user_prompt_template", PromptConfig.user_prompt_template),
     )
 
+    # Load categories from file next to config, falling back to project root
+    categories_path = path.parent / "categories.txt"
+    if not categories_path.exists():
+        categories_path = CATEGORIES_DEFAULT_PATH
+    try:
+        categories = tuple(load_categories(categories_path))
+    except (FileNotFoundError, ValueError):
+        categories = ()
+
     return AppConfig(
         api=api,
         prompts=prompts,
         data_dir=Path(raw.get("data_dir", "data")),
         db_path=Path(raw.get("db_path", "data/quotes.db")),
+        categories=categories,
     )

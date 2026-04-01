@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS quotes (
     category TEXT,
     status TEXT NOT NULL DEFAULT 'parsed',
     batch_id INTEGER,
+    author_type TEXT,
+    religious_sentiment TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_text_author ON quotes(text, author);
@@ -35,10 +37,22 @@ def get_connection(db_path: Path) -> sqlite3.Connection:
 
 
 def init_db(db_path: Path) -> None:
-    """Create tables and indexes if they don't exist."""
+    """Create tables and indexes if they don't exist, then upgrade schema."""
     conn = get_connection(db_path)
     conn.executescript(SCHEMA_SQL)
+    upgrade_schema(conn)
     conn.close()
+
+
+def upgrade_schema(conn: sqlite3.Connection) -> None:
+    """Add new columns if they don't exist (idempotent)."""
+    cursor = conn.execute("PRAGMA table_info(quotes)")
+    existing = {row[1] for row in cursor.fetchall()}
+    if "author_type" not in existing:
+        conn.execute("ALTER TABLE quotes ADD COLUMN author_type TEXT")
+    if "religious_sentiment" not in existing:
+        conn.execute("ALTER TABLE quotes ADD COLUMN religious_sentiment TEXT")
+    conn.commit()
 
 
 def insert_quote(
@@ -73,16 +87,48 @@ def update_tagged(
     quote_id: int,
     *,
     keywords: list[str],
-    category: str,
+    categories: list[str],
     batch_id: int,
+    author_type: str | None = None,
+    religious_sentiment: str | None = None,
 ) -> bool:
-    """Update a single quote with AI-generated tags. Returns True if a row was updated."""
+    """Update a single quote with AI-generated tags. Returns True if a row was updated.
+
+    Categories are stored as a JSON array string (e.g., '["Courage", "Philosophy"]').
+    """
     cursor = conn.execute(
-        "UPDATE quotes SET keywords = ?, category = ?, status = 'tagged', batch_id = ? "
+        "UPDATE quotes SET keywords = ?, category = ?, status = 'tagged', batch_id = ?, "
+        "author_type = ?, religious_sentiment = ? "
         "WHERE id = ?",
-        (json.dumps(keywords), category, batch_id, quote_id),
+        (json.dumps(keywords), json.dumps(categories), batch_id,
+         author_type, religious_sentiment, quote_id),
     )
     return cursor.rowcount > 0
+
+
+def reset_tagged(conn: sqlite3.Connection) -> tuple[int, int]:
+    """Reset all tagged and errored quotes to 'parsed' for re-tagging.
+
+    Returns (tagged_count, errored_count) of rows reset.
+    """
+    tagged = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'tagged'").fetchone()[0]
+    errored = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'error'").fetchone()[0]
+
+    if tagged > 0:
+        conn.execute(
+            "UPDATE quotes SET status = 'parsed', keywords = NULL, category = NULL, "
+            "batch_id = NULL, author_type = NULL, religious_sentiment = NULL "
+            "WHERE status = 'tagged'"
+        )
+    if errored > 0:
+        conn.execute(
+            "UPDATE quotes SET status = 'parsed', keywords = NULL, category = NULL, "
+            "batch_id = NULL, author_type = NULL, religious_sentiment = NULL "
+            "WHERE status = 'error'"
+        )
+
+    conn.commit()
+    return tagged, errored
 
 
 def next_batch_id(conn: sqlite3.Connection) -> int:

@@ -24,12 +24,22 @@ json_mode = false         # Send response_format=json_object (can cause models t
 
 [prompts]
 # System prompt: instructs the AI on output format.
-# The AI must return a JSON array with id, keywords, and category per quote.
+# {{categories}} is replaced at runtime with the contents of categories.txt.
+# The AI must return a JSON array with id, keywords, category, author_type, and optionally religious_sentiment per quote.
 system_prompt = """You are a quote classification assistant. These keywords are used in an application to match quotes to user-defined topics. A user describes a topic in plain language (e.g., "friendship", "quotes about courage", "science and discovery"). Your keywords must overlap with words a real person would naturally use to describe the kind of quotes they want.
 
 For each numbered quote below, provide:
 - keywords: 6-10 keywords ordered by relevance (most relevant first)
-- category: a single freeform category label (e.g., "Philosophy", "Humor", "Motivation", "Science", "Literature", "Politics", "Faith", "Love", "War")
+- categories: 1-3 categories from this list: {{categories}}. Assign the single best-fit category first. Add a second or third ONLY when the quote genuinely belongs in multiple distinct categories — not just because it tangentially relates. Most quotes should have 1-2 categories. 3 is the hard maximum. When in doubt, use fewer.
+- author_type: classify the author as one of: "person", "work", "concept", "religious_text", "fictional"
+- religious_sentiment: ONLY include this field if the quote is meaningfully about a specific religion. When present, it must be an object mapping religion names to sentiment. Example: {"christianity": "positive"} or {"islam": "critical", "religion": "negative"}. Allowed religion keys: buddhism, christianity, catholicism, hinduism, islam, judaism, sikhism, taoism, religion. Allowed sentiment values: "positive", "neutral", "critical". Omit this field entirely for non-religious quotes.
+
+author_type rules:
+- "person": a real human being (most quotes)
+- "work": the author field is actually a book, play, film, or other creative work title
+- "concept": the author field is an abstract concept, event, or topic page (e.g., "Flowers", "Fate", "First presidency of Donald Trump")
+- "religious_text": the author field is a religious scripture (e.g., "Bhagavad Gita", "Quran", "Book of Sirach")
+- "fictional": the author field is a fictional character or from a fictional work (e.g., "Silver Surfer", "Total War: Shogun 2")
 
 Keyword rules:
 - Lowercase only, no punctuation
@@ -37,7 +47,7 @@ Keyword rules:
 - Choose words a person would actually use to search for or describe this kind of quote — think like a user, not an academic
 - Mix broad keywords for discoverability (e.g., "loyalty", "politics", "courage") with a few narrower ones for precision (e.g., "stoicism", "philanthropy")
 - Include the subject matter or domain when obvious (e.g., "physics" for Einstein, "civil rights" for MLK, "sailing" for a nautical quote)
-- If the author is well-known, include their lowercase last name as a keyword (e.g., "einstein", "gandhi", "twain", "kierkegaard")
+- Do NOT include the author's name as a keyword — the author field handles author matching separately
 - Avoid abstract academic terms nobody would search for (e.g., "anti-collectivism", "epistemological doubt", "proselytism", "cosmology", "retrospection")
 - These specific words are BANNED — never use them: "life", "quote", "famous", "words", "meaning", "existential", "existentialism", "existence", "observation". If you catch yourself writing one of these, replace it with a more specific alternative.
 - Avoid generic filler that could apply to almost any quote (e.g., "human nature", "human experience", "personal growth")
@@ -45,7 +55,9 @@ Keyword rules:
 Return ONLY a valid JSON array. Each element must have:
 - "id": the quote number from the input (integer)
 - "keywords": array of lowercase keyword strings
-- "category": a single category string
+- "categories": array of 1-3 category strings (MUST be from the allowed list above, best-fit first)
+- "author_type": one of "person", "work", "concept", "religious_text", "fictional"
+- "religious_sentiment": object mapping religion to sentiment (ONLY for religious quotes, omit otherwise)
 
 Do not include any text outside the JSON array. Do not wrap in markdown code fences."""
 
