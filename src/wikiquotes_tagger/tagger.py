@@ -49,9 +49,14 @@ def tag_quotes(
     *,
     batch_size_override: int | None = None,
     limit: int | None = None,
+    sample: int | None = None,
     debug: bool = False,
 ) -> int:
-    """Main entry point: tag untagged quotes in batches. Returns count tagged."""
+    """Main entry point: tag untagged quotes in batches. Returns count tagged.
+
+    If `sample` is set, picks that many random quotes from the full untagged pool
+    and tags only those (for testing prompt quality with diverse authors).
+    """
     global _interrupted
     _interrupted = False
 
@@ -69,6 +74,15 @@ def tag_quotes(
         timeout=httpx.Timeout(config.api.timeout_seconds, connect=10.0),
     )
 
+    # If sample mode, pre-select random IDs from the full untagged pool
+    sample_ids: list[int] | None = None
+    if sample is not None and sample > 0:
+        sample_ids = db.get_random_untagged_ids(conn, sample)
+        if not sample_ids:
+            click.echo("No untagged quotes found.")
+            return 0
+        click.echo(f"Sample mode: selected {len(sample_ids):,} random quotes from untagged pool")
+
     try:
         # Count total untagged for progress display
         untagged_total = conn.execute(
@@ -79,12 +93,18 @@ def tag_quotes(
             click.echo("No untagged quotes found.")
             return 0
 
-        effective_limit = min(limit, untagged_total) if limit else untagged_total
+        if sample_ids is not None:
+            effective_limit = len(sample_ids)
+        else:
+            effective_limit = min(limit, untagged_total) if limit else untagged_total
         total_batches = (effective_limit + batch_size - 1) // batch_size
         click.echo(
             f"Tagging {effective_limit:,} of {untagged_total:,} untagged quotes "
             f"in ~{total_batches:,} batches of {batch_size}"
         )
+
+        # For sample mode, chunk the pre-selected IDs into batches
+        sample_offset = 0
 
         batch_num = 0
         consecutive_failures = 0
@@ -93,15 +113,23 @@ def tag_quotes(
                 click.echo("Interrupted. Progress saved.")
                 break
 
-            if limit is not None and total_tagged >= limit:
-                break
+            if sample_ids is not None:
+                # Sample mode: pull next chunk from pre-selected IDs
+                if sample_offset >= len(sample_ids):
+                    break
+                chunk_end = min(sample_offset + batch_size, len(sample_ids))
+                chunk_ids = sample_ids[sample_offset:chunk_end]
+                quotes = db.get_quotes_by_ids(conn, chunk_ids)
+                sample_offset = chunk_end
+            else:
+                # Normal mode: sequential fetch
+                if limit is not None and total_tagged >= limit:
+                    break
+                current_batch_size = batch_size
+                if limit is not None:
+                    current_batch_size = min(batch_size, limit - total_tagged)
+                quotes = db.get_untagged_batch(conn, current_batch_size)
 
-            # Fetch next batch
-            current_batch_size = batch_size
-            if limit is not None:
-                current_batch_size = min(batch_size, limit - total_tagged)
-
-            quotes = db.get_untagged_batch(conn, current_batch_size)
             if not quotes:
                 break
 

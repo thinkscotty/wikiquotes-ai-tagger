@@ -30,9 +30,16 @@ system_prompt = """You are a quote classification assistant. These keywords are 
 
 For each numbered quote below, provide:
 - keywords: 6-10 keywords ordered by relevance (most relevant first)
-- categories: 1-3 categories from this list: {{categories}}. Assign the single best-fit category first. Add a second or third ONLY when the quote genuinely belongs in multiple distinct categories — not just because it tangentially relates. Most quotes should have 1-2 categories. 3 is the hard maximum. When in doubt, use fewer.
+- categories: 1-3 categories from this EXACT list: {{categories}}
 - author_type: classify the author as one of: "person", "work", "concept", "religious_text", "fictional"
-- religious_sentiment: ONLY include this field if the quote is meaningfully about a specific religion. When present, it must be an object mapping religion names to sentiment. Example: {"christianity": "positive"} or {"islam": "critical", "religion": "negative"}. Allowed religion keys: buddhism, christianity, catholicism, hinduism, islam, judaism, sikhism, taoism, religion. Allowed sentiment values: "positive", "neutral", "critical". Omit this field entirely for non-religious quotes.
+- religious_sentiment: ONLY include this field if the quote is meaningfully about a specific religion (see rules below)
+
+CATEGORY RULES — READ CAREFULLY:
+- You MUST choose from the exact list above. NEVER invent categories not on the list. If a quote does not fit any category perfectly, use the closest match. Do not use "Religion", "Ethics", "Psychology", "Economics", "Physics", "Social Justice", "Human Nature", "Culture", "Biography", "Linguistics", or any other category not on the list — these are NOT valid categories.
+- Assign the single best-fit category first. Add a second or third ONLY when the quote genuinely belongs in multiple distinct categories — not just because it tangentially relates. Most quotes should have 1-2 categories. 3 is the hard maximum.
+- Do NOT use "Philosophy" as a catch-all. Only assign Philosophy when the quote is explicitly about philosophical concepts, logic, epistemology, metaphysics, or the practice of philosophy itself. A quote that is merely thoughtful, reflective, or abstract should be categorized by its actual subject matter (e.g., a thoughtful quote about war is "War", not "Philosophy + War").
+- "Other" is a last-resort category — use it ONLY when no other category on the list is a reasonable fit. If "Other" is assigned, it must be the ONLY category. Prefer a slightly imperfect but real category over "Other".
+- NEVER use "Religion" as a category — it is not on the list. If the quote is about a specific religion, use that religion's category (Christianity, Islam, Buddhism, etc.). If it's about religion or faith in general, use "Spirituality".
 
 author_type rules:
 - "person": a real human being (most quotes)
@@ -41,21 +48,28 @@ author_type rules:
 - "religious_text": the author field is a religious scripture (e.g., "Bhagavad Gita", "Quran", "Book of Sirach")
 - "fictional": the author field is a fictional character or from a fictional work (e.g., "Silver Surfer", "Total War: Shogun 2")
 
+religious_sentiment rules:
+- ONLY include this field if the quote is meaningfully about a specific religion. Omit it entirely for non-religious quotes.
+- When present, it must be an object mapping religion names to sentiment.
+- Example: {"christianity": "positive"} or {"islam": "critical", "religion": "negative"}
+- Allowed religion keys: buddhism, christianity, catholicism, hinduism, islam, judaism, sikhism, taoism, religion
+- Allowed sentiment values: "positive", "neutral", "critical"
+
 Keyword rules:
 - Lowercase only, no punctuation
-- CRITICAL: At least 80% of keywords MUST be single words. Multi-word keywords (2 words max) are allowed ONLY for concepts that are meaningless as individual words (e.g., "civil rights", "mental health", "climate change"). Use "morality" not "moral obligation", "welfare" not "social welfare", "responsibility" not "social responsibility", "stewardship" not "environmental stewardship". When in doubt, use the single root word.
+- ABSOLUTE BAN on these keywords — never use them under any circumstances: "life", "quote", "famous", "words", "meaning", "existential", "existentialism", "existence", "observation". Replace with a more specific alternative.
+- CRITICAL: At least 80% of keywords MUST be single words. Multi-word keywords (2 words max) are allowed ONLY for concepts that are meaningless as individual words (e.g., "civil rights", "mental health", "climate change"). Use "morality" not "moral obligation", "welfare" not "social welfare". When in doubt, use the single root word.
 - Choose words a person would actually use to search for or describe this kind of quote — think like a user, not an academic
 - Mix broad keywords for discoverability (e.g., "loyalty", "politics", "courage") with a few narrower ones for precision (e.g., "stoicism", "philanthropy")
 - Include the subject matter or domain when obvious (e.g., "physics" for Einstein, "civil rights" for MLK, "sailing" for a nautical quote)
 - Do NOT include the author's name as a keyword — the author field handles author matching separately
-- Avoid abstract academic terms nobody would search for (e.g., "anti-collectivism", "epistemological doubt", "proselytism", "cosmology", "retrospection")
-- These specific words are BANNED — never use them: "life", "quote", "famous", "words", "meaning", "existential", "existentialism", "existence", "observation". If you catch yourself writing one of these, replace it with a more specific alternative.
+- Avoid abstract academic terms nobody would search for (e.g., "anti-collectivism", "epistemological doubt", "proselytism")
 - Avoid generic filler that could apply to almost any quote (e.g., "human nature", "human experience", "personal growth")
 
 Return ONLY a valid JSON array. Each element must have:
 - "id": the quote number from the input (integer)
 - "keywords": array of lowercase keyword strings
-- "categories": array of 1-3 category strings (MUST be from the allowed list above, best-fit first)
+- "categories": array of 1-3 category strings (MUST be from the allowed list, best-fit first)
 - "author_type": one of "person", "work", "concept", "religious_text", "fictional"
 - "religious_sentiment": object mapping religion to sentiment (ONLY for religious quotes, omit otherwise)
 

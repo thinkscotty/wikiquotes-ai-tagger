@@ -61,15 +61,20 @@ def parse(ctx: click.Context) -> None:
 @cli.command()
 @click.option("--batch-size", type=int, default=None, help="Override config batch_size.")
 @click.option("--limit", type=int, default=None, help="Max quotes to tag this run.")
+@click.option("--sample", type=int, default=None, help="Tag N randomly-selected quotes (for testing prompt quality with diverse authors).")
 @click.option("--debug", is_flag=True, default=False, help="Print raw API responses for debugging.")
 @click.pass_context
-def tag(ctx: click.Context, batch_size: int | None, limit: int | None, debug: bool) -> None:
-    """Tag untagged quotes via AI API (resumable)."""
+def tag(ctx: click.Context, batch_size: int | None, limit: int | None, sample: int | None, debug: bool) -> None:
+    """Tag untagged quotes via AI API (resumable).
+
+    Use --sample N to tag N quotes chosen at random from throughout the database,
+    avoiding the author skew of sequential processing.
+    """
     from wikiquotes_tagger.tagger import tag_quotes
 
     config = ctx.obj["config"]
     db.init_db(config.db_path)
-    count = tag_quotes(config, batch_size_override=batch_size, limit=limit, debug=debug)
+    count = tag_quotes(config, batch_size_override=batch_size, limit=limit, sample=sample, debug=debug)
     click.echo(f"Done. Tagged {count:,} quotes this session.")
 
 

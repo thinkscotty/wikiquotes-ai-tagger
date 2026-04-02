@@ -82,6 +82,32 @@ def get_untagged_batch(conn: sqlite3.Connection, batch_size: int) -> list[dict]:
     return [dict(row) for row in cursor.fetchall()]
 
 
+def get_random_untagged_ids(conn: sqlite3.Connection, count: int) -> list[int]:
+    """Fetch `count` random quote IDs from the untagged pool.
+
+    Uses a single ORDER BY RANDOM() to pick all IDs at once, avoiding
+    duplicates across batches. Returns a list of integer IDs.
+    """
+    cursor = conn.execute(
+        "SELECT id FROM quotes WHERE status = 'parsed' ORDER BY RANDOM() LIMIT ?",
+        (count,),
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
+def get_quotes_by_ids(conn: sqlite3.Connection, ids: list[int]) -> list[dict]:
+    """Fetch quotes by a list of IDs, preserving the input order."""
+    if not ids:
+        return []
+    placeholders = ",".join("?" for _ in ids)
+    cursor = conn.execute(
+        f"SELECT id, text, author, source_work FROM quotes WHERE id IN ({placeholders})",
+        ids,
+    )
+    rows_by_id = {row["id"]: dict(row) for row in cursor.fetchall()}
+    return [rows_by_id[qid] for qid in ids if qid in rows_by_id]
+
+
 def update_tagged(
     conn: sqlite3.Connection,
     quote_id: int,
