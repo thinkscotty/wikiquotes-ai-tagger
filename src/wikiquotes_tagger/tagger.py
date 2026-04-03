@@ -336,12 +336,15 @@ def _call_ai_api(
             if response.status_code == 200:
                 data = response.json()
                 try:
-                    return data["choices"][0]["message"]["content"]
+                    content = data["choices"][0]["message"]["content"]
                 except (KeyError, IndexError, TypeError) as e:
                     raise RuntimeError(
                         f"Unexpected API response structure: {e} — "
                         f"keys: {list(data.keys()) if isinstance(data, dict) else type(data).__name__}"
                     ) from e
+                if content is None:
+                    raise RuntimeError("API returned null content (possible refusal or empty completion)")
+                return content
 
             # Retriable errors
             if response.status_code in (429, 500, 502, 503, 504):

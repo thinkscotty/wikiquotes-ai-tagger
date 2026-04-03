@@ -12,7 +12,7 @@ Standalone CLI tool that downloads an English [Wikiquote](https://en.wikiquote.o
 ## Setup
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/thinkscotty/wikiquotes-ai-tagger.git
 cd wikiquotes-ai-tagger
 uv sync
 ```
