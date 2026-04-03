@@ -164,11 +164,12 @@ def next_batch_id(conn: sqlite3.Connection) -> int:
 
 
 def get_stats(conn: sqlite3.Connection) -> dict:
-    """Return counts: total, parsed, tagged, errored, plus top 10 categories."""
+    """Return counts: total, parsed, tagged, errored, non_english, plus top 10 categories."""
     total = conn.execute("SELECT COUNT(*) FROM quotes").fetchone()[0]
     parsed = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'parsed'").fetchone()[0]
     tagged = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'tagged'").fetchone()[0]
     errored = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'error'").fetchone()[0]
+    non_english = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'non_english'").fetchone()[0]
 
     top_categories: list[tuple[str, int]] = []
     if tagged > 0:
@@ -184,5 +185,6 @@ def get_stats(conn: sqlite3.Connection) -> dict:
         "parsed": parsed,
         "tagged": tagged,
         "errored": errored,
+        "non_english": non_english,
         "top_categories": top_categories,
     }

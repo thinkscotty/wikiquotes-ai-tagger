@@ -3,43 +3,30 @@
 # Edit this list and re-run tagging to update.
 
 Aging
-Anger
-America
 Animals
 Anxiety
-Art
 Beauty
 Business
 Change
-Competition
 Courage
 Creativity
-Death
 Destiny
-Discipline
 Dreams
 Education
-Failure
 Family
 Fear
-Food
 Forgiveness
 Freedom
 Friendship
 Gratitude
 Happiness
 Perseverance
-Health
 History
-Honesty
 Hope
 Humor
 Inspirational
 Justice
-Law
 Leadership
-Life Lessons
-Literature
 Love
 Music
 Nature
@@ -51,7 +38,6 @@ Relationships
 Resilience
 Romance
 Sadness
-Sarcasm
 Science
 Self-Discovery
 Society
@@ -59,14 +45,11 @@ Solitude
 Spirituality
 Sports
 Strength
-Success
-Technology
 Time
 Travel
 Truth
 War
 Wealth
-Wisdom
 
 # Religion-specific categories (not generic "Religion")
 Buddhism

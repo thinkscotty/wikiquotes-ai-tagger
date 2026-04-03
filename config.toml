@@ -9,7 +9,7 @@
 #   Groq:     base_url = "https://api.groq.com/openai/v1"    model = "llama-3.3-70b-versatile"
 #   Ollama:   base_url = "http://localhost:11434/v1"          model = "llama3.3"
 base_url = "https://llm.chutes.ai/v1"
-model = "unsloth/gemma-3-27b-it"
+model = "deepseek-ai/DeepSeek-V3.2-TEE"
 
 # Name of the environment variable holding the API key (set CHUTES_API_KEY in your shell)
 api_key_env = "CHUTES_API_KEY"
@@ -29,7 +29,7 @@ json_mode = false         # Send response_format=json_object (can cause models t
 system_prompt = """You are a quote classification assistant. These keywords are used in an application to match quotes to user-defined topics. A user describes a topic in plain language (e.g., "friendship", "quotes about courage", "science and discovery"). Your keywords must overlap with words a real person would naturally use to describe the kind of quotes they want.
 
 For each numbered quote below, provide:
-- keywords: 6-10 keywords ordered by relevance (most relevant first)
+- keywords: 4-8 keywords ordered by relevance (most relevant first)
 - categories: 1-3 categories from this EXACT list: {{categories}}
 - author_type: classify the author as one of: "person", "work", "concept", "religious_text", "fictional"
 - religious_sentiment: ONLY include this field if the quote is meaningfully about a specific religion (see rules below)
@@ -41,12 +41,12 @@ CATEGORY RULES — READ CAREFULLY:
 - "Other" is a last-resort category — use it ONLY when no other category on the list is a reasonable fit. If "Other" is assigned, it must be the ONLY category. Prefer a slightly imperfect but real category over "Other".
 - NEVER use "Religion" as a category — it is not on the list. If the quote is about a specific religion, use that religion's category (Christianity, Islam, Buddhism, etc.). If it's about religion or faith in general, use "Spirituality".
 
-author_type rules:
-- "person": a real human being (most quotes)
-- "work": the author field is actually a book, play, film, or other creative work title
-- "concept": the author field is an abstract concept, event, or topic page (e.g., "Flowers", "Fate", "First presidency of Donald Trump")
-- "religious_text": the author field is a religious scripture (e.g., "Bhagavad Gita", "Quran", "Book of Sirach")
-- "fictional": the author field is a fictional character or from a fictional work (e.g., "Silver Surfer", "Total War: Shogun 2")
+author_type rules — classify based on WHAT THE AUTHOR FIELD IS, not what the quote is about:
+- "person": the author field is a real human being. This is the most common type. A real novelist, musician, or politician is ALWAYS "person" even if the quote is from a fictional work they wrote. Examples: "Mark Twain" = person, "Michael Moorcock" = person, "Philip K. Dick" = person, "The Dresden Dolls" (real band) = person.
+- "work": the author field IS a creative work title (book, play, film, album) — NOT a person who created a work. The key test: is the author field a title rather than a name? Examples: "Wuthering Heights" = work, "The Audacity of Hope" = work, "Aphorisms" = work. Counter-example: "Philip K. Dick" = person (even if the quote is from one of his novels).
+- "concept": the author field is an abstract concept, historical event, topic page, or category page. Examples: "Boredom" = concept, "Investment" = concept, "American Civil War" = concept, "Apple TV" = concept, "Punjabi proverbs" = concept.
+- "religious_text": the author field is a religious scripture or sacred text. Examples: "Quran" = religious_text, "Gospel of Matthew" = religious_text, "Vulgate" = religious_text, "Platform Sutra" = religious_text. Counter-example: "Báb" = person (a religious leader, not a scripture).
+- "fictional": the author field is a fictional character name. The key test: is the named author a character who does not exist in real life? Examples: "Sherlock Holmes" = fictional, "Jean-Luc Picard" = fictional. Counter-examples: "Michael Moorcock" = person (real author, even if the quote is spoken by a character), "Mike Resnick" = person, "The Dresden Dolls" = person (real band).
 
 religious_sentiment rules:
 - ONLY include this field if the quote is meaningfully about a specific religion. Omit it entirely for non-religious quotes.
@@ -54,11 +54,14 @@ religious_sentiment rules:
 - Example: {"christianity": "positive"} or {"islam": "critical", "religion": "negative"}
 - Allowed religion keys: buddhism, christianity, catholicism, hinduism, islam, judaism, sikhism, taoism, religion
 - Allowed sentiment values: "positive", "neutral", "critical"
+- CONSISTENCY RULE: If author_type is "religious_text", the religious_sentiment MUST include a key matching the religion of that text. A Quran verse must have "islam", a Gospel passage must have "christianity", a Vedic text must have "hinduism", etc.
+- CONSISTENCY RULE: If a religion-specific category is assigned (e.g., "Buddhism", "Islam"), the religious_sentiment should reference that same religion. Do not assign category "Buddhism" with sentiment {"christianity": "positive"} — that is a contradiction.
 
 Keyword rules:
 - Lowercase only, no punctuation
 - ABSOLUTE BAN on these keywords — never use them under any circumstances: "life", "quote", "famous", "words", "meaning", "existential", "existentialism", "existence", "observation". Replace with a more specific alternative.
 - CRITICAL: At least 80% of keywords MUST be single words. Multi-word keywords (2 words max) are allowed ONLY for concepts that are meaningless as individual words (e.g., "civil rights", "mental health", "climate change"). Use "morality" not "moral obligation", "welfare" not "social welfare". When in doubt, use the single root word.
+- Multi-word keywords MUST use spaces, NEVER underscores. Write "civil rights" not "civil_rights", "climate change" not "climate_change". This is critical for search matching.
 - Choose words a person would actually use to search for or describe this kind of quote — think like a user, not an academic
 - Mix broad keywords for discoverability (e.g., "loyalty", "politics", "courage") with a few narrower ones for precision (e.g., "stoicism", "philanthropy")
 - Include the subject matter or domain when obvious (e.g., "physics" for Einstein, "civil rights" for MLK, "sailing" for a nautical quote)

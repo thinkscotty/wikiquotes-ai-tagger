@@ -128,6 +128,8 @@ def stats(ctx: click.Context) -> None:
     click.echo(f"  Tagged:      {s['tagged']:>8,}")
     if s["errored"] > 0:
         click.echo(f"  Errored:     {s['errored']:>8,}")
+    if s.get("non_english", 0) > 0:
+        click.echo(f"  Non-English: {s['non_english']:>8,}")
     if s["total"] > 0:
         pct = s["tagged"] / s["total"] * 100
         click.echo(f"  Progress:    {pct:>7.1f}%")

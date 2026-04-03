@@ -8,6 +8,7 @@ import re
 import signal
 import sqlite3
 import time
+import unicodedata
 from dataclasses import dataclass
 from random import random
 
@@ -24,6 +25,55 @@ _interrupted = False
 
 # Valid author_type values
 VALID_AUTHOR_TYPES = frozenset({"person", "work", "concept", "religious_text", "fictional"})
+
+# Unicode script categories that indicate non-English text.
+# Each entry is a set of Unicode block prefixes checked via unicodedata.name().
+_NON_LATIN_SCRIPTS = frozenset({
+    "ARABIC", "HEBREW", "DEVANAGARI", "BENGALI", "GURMUKHI", "GUJARATI",
+    "TAMIL", "TELUGU", "KANNADA", "MALAYALAM", "SINHALA", "THAI", "LAO",
+    "TIBETAN", "MYANMAR", "GEORGIAN", "HANGUL", "HIRAGANA", "KATAKANA",
+    "CJK", "ETHIOPIC", "KHMER", "MONGOLIAN", "GREEK", "CYRILLIC",
+    "ARMENIAN", "COPTIC", "ORIYA",
+})
+
+
+def _is_non_english(text: str, threshold: float = 0.3) -> bool:
+    """Detect non-English quotes using Unicode script analysis.
+
+    Returns True if more than `threshold` (default 30%) of the alphabetic
+    characters in the text belong to non-Latin scripts. This catches Greek,
+    Arabic, Devanagari, CJK, Cyrillic, Punjabi, etc. while allowing quotes
+    with occasional accented Latin characters (French, Spanish names).
+
+    Does NOT attempt to detect Latin-script non-English (e.g., German, Latin)
+    — that would require language model detection and is deferred to a future
+    language field (see issue #2).
+    """
+    if not text:
+        return False
+
+    non_latin = 0
+    latin = 0
+
+    for ch in text:
+        if not ch.isalpha():
+            continue
+        try:
+            name = unicodedata.name(ch, "")
+        except ValueError:
+            continue
+        first_word = name.split()[0] if name else ""
+        if first_word in _NON_LATIN_SCRIPTS:
+            non_latin += 1
+        elif first_word == "LATIN" or ch.isascii():
+            latin += 1
+        # Characters without a recognized script prefix are ignored
+
+    total = latin + non_latin
+    if total == 0:
+        return False
+
+    return (non_latin / total) > threshold
 
 
 def _handle_sigint(signum: int, frame: object) -> None:
@@ -132,6 +182,21 @@ def tag_quotes(
 
             if not quotes:
                 break
+
+            # Filter out non-English quotes before sending to AI.
+            # Mark them as 'non_english' so they aren't re-fetched in future batches.
+            non_english_ids = [q["id"] for q in quotes if _is_non_english(q.get("text", ""))]
+            if non_english_ids:
+                for neid in non_english_ids:
+                    conn.execute(
+                        "UPDATE quotes SET status = 'non_english' WHERE id = ?",
+                        (neid,),
+                    )
+                conn.commit()
+                quotes = [q for q in quotes if q["id"] not in set(non_english_ids)]
+                log.info("Skipped %d non-English quotes", len(non_english_ids))
+                if not quotes:
+                    continue  # entire batch was non-English, fetch next
 
             batch_num += 1
             start_time = time.monotonic()
@@ -447,6 +512,7 @@ def _apply_tags(
     """Update quotes in the database with tags. Returns count actually updated."""
     count = 0
     for result in results:
+        _validate_religion_consistency(result)
         if db.update_tagged(
             conn,
             result.quote_id,
@@ -458,3 +524,71 @@ def _apply_tags(
         ):
             count += 1
     return count
+
+
+# Maps religion-specific categories to their expected religious_sentiment keys.
+_CATEGORY_TO_RELIGION_KEY: dict[str, str] = {
+    "Buddhism": "buddhism",
+    "Christianity": "christianity",
+    "Catholicism": "catholicism",
+    "Hinduism": "hinduism",
+    "Islam": "islam",
+    "Judaism": "judaism",
+    "Sikhism": "sikhism",
+    "Taoism": "taoism",
+    "Atheism": "atheism",
+}
+
+
+def _validate_religion_consistency(result: TagResult) -> None:
+    """Fix religion-related inconsistencies in AI output.
+
+    1. If author_type is "religious_text" but religious_sentiment is missing,
+       infer the religion from categories and add a neutral sentiment.
+    2. If a religion-specific category is assigned, ensure religious_sentiment
+       includes a key for that religion.
+    3. If religious_sentiment references a religion that contradicts the
+       category (e.g., category "Buddhism" but sentiment {"christianity": "positive"}
+       with no buddhism key), add the missing key.
+    """
+    # Parse existing sentiment
+    sentiment: dict[str, str] = {}
+    if result.religious_sentiment:
+        try:
+            sentiment = json.loads(result.religious_sentiment)
+        except (json.JSONDecodeError, TypeError):
+            sentiment = {}
+
+    changed = False
+
+    # Find religion keys implied by categories
+    for cat in result.categories:
+        expected_key = _CATEGORY_TO_RELIGION_KEY.get(cat)
+        if expected_key and expected_key not in sentiment:
+            sentiment[expected_key] = "neutral"
+            changed = True
+            log.debug(
+                "Religion validation: added '%s': 'neutral' for category '%s' (quote %d)",
+                expected_key, cat, result.quote_id,
+            )
+
+    # If author_type is religious_text, sentiment must be present
+    if result.author_type == "religious_text" and not sentiment:
+        # Try to infer from categories
+        for cat in result.categories:
+            key = _CATEGORY_TO_RELIGION_KEY.get(cat)
+            if key:
+                sentiment[key] = "neutral"
+                changed = True
+                break
+        # If still empty, add generic "religion": "neutral"
+        if not sentiment:
+            sentiment["religion"] = "neutral"
+            changed = True
+            log.debug(
+                "Religion validation: added generic sentiment for religious_text (quote %d)",
+                result.quote_id,
+            )
+
+    if changed:
+        result.religious_sentiment = json.dumps(sentiment)
