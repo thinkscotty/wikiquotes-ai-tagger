@@ -5,6 +5,7 @@
 Aging
 Animals
 Anxiety
+Art
 Beauty
 Business
 Change
@@ -21,12 +22,14 @@ Friendship
 Gratitude
 Happiness
 Perseverance
+Health
 History
 Hope
 Humor
 Inspirational
 Justice
 Leadership
+Literature
 Love
 Music
 Nature
@@ -45,6 +48,7 @@ Solitude
 Spirituality
 Sports
 Strength
+Technology
 Time
 Travel
 Truth
