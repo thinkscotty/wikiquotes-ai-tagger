@@ -23,3 +23,6 @@ build/
 
 # Claude Code
 CLAUDE.md
+
+# Scratch files
+old_prompt.toml

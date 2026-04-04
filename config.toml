@@ -15,11 +15,11 @@ model = "deepseek-ai/DeepSeek-V3.2-TEE"
 api_key_env = "CHUTES_API_KEY"
 
 # Tuning parameters
-batch_size = 20           # Quotes per API call
+batch_size = 10           # Quotes per API call
 max_concurrent = 5        # Reserved for future parallel batching
-timeout_seconds = 120      # Per-request timeout
-delay_between_batches = 5.0  # Seconds between batches (rate limit safety)
-max_retries = 4           # Retry count for 429/5xx errors
+timeout_seconds = 180      # Per-request timeout
+delay_between_batches = 10.0  # Seconds between batches (rate limit safety)
+max_retries = 3           # Retry count for 429/5xx errors
 json_mode = false         # Send response_format=json_object (can cause models to return single objects instead of arrays)
 
 [prompts]
@@ -60,15 +60,15 @@ RELIGIOUS_SENTIMENT RULES — ONLY for quotes meaningfully about a specific reli
 - If author_type is "religious_text", sentiment MUST include a key for that text's religion (Quran → "islam", Gospel → "christianity").
 - If a religion category is assigned, sentiment must reference that same religion.
 
-Keyword rules:
+KEYWORD RULES:
 - Provide 5-7 keywords per quote, ordered by relevance.
-- Lowercase, no punctuation. Never use: "life", "quote", "famous", "words", "meaning", "exist*", "observation", "wisdom", "perception", "self", "world", "thought", "reflection", "understanding", "expression", "awareness", "contemplation", "insight", "perspective"
-- 80%+ must be single words. Multi-word (2 max) ONLY for indivisible concepts ("civil rights", "climate change"). Use spaces, NEVER underscores.
-- Think like a user searching for quotes, not an academic. Mix broad terms ("courage", "politics") with precise ones ("stoicism", "philanthropy")
-- Include the domain when obvious ("physics" for Einstein, "civil rights" for MLK)
-- Do NOT use the author's name as a keyword
-- Avoid academic jargon ("anti-collectivism", "epistemological doubt") and generic filler ("human nature", "personal growth")
-- When a quote's meaning is ambiguous, keyword the literal subject matter — what the quote explicitly mentions — rather than abstract interpretations. A quote mentioning "the sea" should include "sea" and "ocean", not vague terms like "contemplation".
+- Lowercase, no punctuation.
+- 80%+ must be single words. Multi-word (2 words max) ONLY for indivisible concepts ("civil rights", "climate change"). Use spaces, NEVER underscores.
+- BANNED keywords — never use any of these: "life", "quote", "famous", "words", "meaning", "existence", "existential", "existentialism", "observation", "wisdom", "perception", "self", "world", "thought", "reflection", "understanding", "expression", "awareness", "contemplation", "insight", "perspective", "human nature", "personal growth"
+- Think like a user searching for quotes, not an academic — no jargon ("anti-collectivism", "epistemological doubt"). Mix broad terms ("courage", "politics") with precise ones ("stoicism", "philanthropy").
+- Include the domain when obvious ("physics" for Einstein, "civil rights" for MLK).
+- Do NOT use the author's name as a keyword.
+- When a quote's meaning is ambiguous, keyword the literal subject matter — what the quote explicitly mentions — not abstract interpretations. A quote mentioning "the sea" should include "sea" and "ocean", not vague abstractions.
 
 EXAMPLE — given these 3 quotes:
 1. "The only thing we have to fear is fear itself." — Franklin D. Roosevelt
