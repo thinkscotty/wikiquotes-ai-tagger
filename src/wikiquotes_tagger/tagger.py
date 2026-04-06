@@ -26,6 +26,15 @@ _interrupted = False
 # Valid author_type values
 VALID_AUTHOR_TYPES = frozenset({"person", "work", "concept", "religious_text", "fictional"})
 
+# Keywords that are too generic to be useful for quote matching.
+# These are stripped during post-processing regardless of what the model returns.
+_BANNED_KEYWORDS = frozenset({
+    "life", "quote", "famous", "words", "meaning", "existence", "existential",
+    "existentialism", "observation", "wisdom", "perception", "self", "world",
+    "thought", "reflection", "understanding", "expression", "awareness",
+    "contemplation", "insight", "perspective", "human nature", "personal growth",
+})
+
 # Unicode script categories that indicate non-English text.
 # Each entry is a set of Unicode block prefixes checked via unicodedata.name().
 _NON_LATIN_SCRIPTS = frozenset({
@@ -238,6 +247,9 @@ def tag_quotes(
                 click.echo(f"--- END DEBUG (quote_ids: {quote_ids[:5]}...) ---\n")
 
             results = _parse_tag_response(response_text, quote_ids)
+
+            # Post-process: enforce keyword/category constraints the model may have ignored
+            _post_process_results(results, quotes, config.categories)
 
             # Apply tags to database
             tagged_count = _apply_tags(conn, results, batch_id)
@@ -505,6 +517,148 @@ def _parse_tag_response(response_text: str, quote_ids: list[int]) -> list[TagRes
         ))
 
     return results
+
+
+# Fuzzy correction map for commonly invented categories → closest canonical match.
+_CATEGORY_CORRECTIONS: dict[str, str] = {
+    "religion": "Spirituality",
+    "ethics": "Philosophy",
+    "psychology": "Health",
+    "economics": "Business",
+    "poetry": "Literature",
+    "fiction": "Literature",
+    "science fiction": "Literature",
+    "ecology": "Nature",
+    "environment": "Nature",
+    "environmentalism": "Nature",
+    "sociology": "Society",
+    "culture": "Society",
+    "law": "Justice",
+    "feminism": "Society",
+    "drama": "Art",
+    "gender": "Society",
+    "media": "Society",
+    "conflict": "War",
+    "physics": "Science",
+    "biology": "Science",
+    "chemistry": "Science",
+    "mathematics": "Science",
+    "math": "Science",
+    "death": "Sadness",
+    "power": "Politics",
+    "healing": "Health",
+    "mental health": "Health",
+    "labor": "Business",
+    "work": "Business",
+    "communication": "Relationships",
+    "photography": "Art",
+    "architecture": "Art",
+    "adventure": "Travel",
+    "mystery": "Fear",
+    "immigration": "Politics",
+    "film": "Art",
+    "language": "Education",
+    "sexuality": "Relationships",
+}
+
+
+def _post_process_results(
+    results: list[TagResult],
+    quotes: list[dict],
+    canonical_categories: tuple[str, ...],
+) -> None:
+    """Enforce keyword and category constraints that models may have ignored.
+
+    Mutates results in-place:
+    1. Strips banned keywords.
+    2. Strips author name from keywords.
+    3. Validates categories against canonical list (fuzzy-corrects or drops invalid).
+    """
+    # Build lookup: quote_id → author name
+    author_by_id: dict[int, str] = {q["id"]: q.get("author", "") for q in quotes}
+    canonical_set = frozenset(canonical_categories)
+    # Case-insensitive lookup for categories
+    canonical_lower = {c.lower(): c for c in canonical_categories}
+
+    for result in results:
+        author = author_by_id.get(result.quote_id, "")
+        _clean_keywords(result, author)
+        _clean_categories(result, canonical_set, canonical_lower)
+
+
+def _clean_keywords(result: TagResult, author: str) -> None:
+    """Strip banned keywords and author name leakage from a result."""
+    original_count = len(result.keywords)
+    cleaned = []
+    for kw in result.keywords:
+        kw_lower = kw.lower().strip()
+        # Strip banned keywords
+        if kw_lower in _BANNED_KEYWORDS:
+            log.debug("Stripped banned keyword '%s' from quote %d", kw, result.quote_id)
+            continue
+        # Strip author name (check both full name and individual name parts)
+        if author and len(author) > 3:
+            author_lower = author.lower()
+            # Full name match
+            if kw_lower == author_lower:
+                log.debug("Stripped author name keyword '%s' from quote %d", kw, result.quote_id)
+                continue
+            # Match against individual name parts (skip short parts like "de", "of", "van")
+            author_parts = [p for p in author_lower.split() if len(p) > 3]
+            if kw_lower in author_parts:
+                log.debug("Stripped author name part '%s' from quote %d", kw, result.quote_id)
+                continue
+        cleaned.append(kw)
+
+    if len(cleaned) != original_count:
+        log.info(
+            "Post-process: stripped %d keyword(s) from quote %d (%d → %d)",
+            original_count - len(cleaned), result.quote_id, original_count, len(cleaned),
+        )
+    result.keywords = cleaned
+
+
+def _clean_categories(
+    result: TagResult,
+    canonical_set: frozenset[str],
+    canonical_lower: dict[str, str],
+) -> None:
+    """Validate categories: correct near-misses, drop truly invalid ones."""
+    original = result.categories[:]
+    cleaned = []
+    for cat in result.categories:
+        if cat in canonical_set:
+            cleaned.append(cat)
+            continue
+        # Try case-insensitive match
+        if cat.lower() in canonical_lower:
+            corrected = canonical_lower[cat.lower()]
+            log.debug("Corrected category '%s' → '%s' (quote %d)", cat, corrected, result.quote_id)
+            cleaned.append(corrected)
+            continue
+        # Try fuzzy correction map
+        correction = _CATEGORY_CORRECTIONS.get(cat.lower())
+        if correction and correction in canonical_set:
+            log.info("Corrected invented category '%s' → '%s' (quote %d)", cat, correction, result.quote_id)
+            cleaned.append(correction)
+            continue
+        # Truly invalid — drop it
+        log.warning("Dropped invalid category '%s' from quote %d", cat, result.quote_id)
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    deduped = []
+    for cat in cleaned:
+        if cat not in seen:
+            seen.add(cat)
+            deduped.append(cat)
+    result.categories = deduped
+
+    if result.categories != original:
+        log.info(
+            "Post-process: categories changed for quote %d: %s → %s",
+            result.quote_id, original, result.categories,
+        )
 
 
 def _apply_tags(

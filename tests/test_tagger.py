@@ -4,7 +4,10 @@ import json
 import tempfile
 from pathlib import Path
 
-from wikiquotes_tagger.tagger import _parse_tag_response, _build_prompt
+from wikiquotes_tagger.tagger import (
+    _parse_tag_response, _build_prompt, _clean_keywords, _clean_categories,
+    _post_process_results, TagResult, _BANNED_KEYWORDS,
+)
 from wikiquotes_tagger.config import AppConfig, PromptConfig, load_categories
 
 
@@ -259,3 +262,141 @@ class TestLoadCategories:
             assert False, "Should have raised FileNotFoundError"
         except FileNotFoundError:
             pass
+
+
+class TestCleanKeywords:
+    """Tests for _clean_keywords post-processing."""
+
+    def _make_result(self, keywords, quote_id=1):
+        return TagResult(
+            quote_id=quote_id, keywords=keywords,
+            categories=["Politics"], author_type="person",
+            religious_sentiment=None,
+        )
+
+    def test_strips_banned_keywords(self):
+        result = self._make_result(["courage", "life", "freedom", "existence", "wisdom"])
+        _clean_keywords(result, "Someone")
+        assert result.keywords == ["courage", "freedom"]
+
+    def test_strips_multi_word_banned_keywords(self):
+        result = self._make_result(["courage", "human nature", "personal growth", "honor"])
+        _clean_keywords(result, "Someone")
+        assert result.keywords == ["courage", "honor"]
+
+    def test_strips_author_full_name(self):
+        result = self._make_result(["fear", "napoleon", "war", "leadership"])
+        _clean_keywords(result, "Napoleon")
+        assert result.keywords == ["fear", "war", "leadership"]
+
+    def test_strips_author_name_parts(self):
+        result = self._make_result(["physics", "einstein", "relativity"])
+        _clean_keywords(result, "Albert Einstein")
+        assert result.keywords == ["physics", "relativity"]
+
+    def test_skips_short_name_parts(self):
+        """Name parts <= 3 chars (de, van, of) should not be stripped."""
+        result = self._make_result(["art", "painting", "de"])
+        _clean_keywords(result, "Leonardo da Vinci")
+        # "de" should not be stripped because "da" is only 2 chars,
+        # but "de" itself isn't an author part here. "vinci" would be stripped.
+        assert "art" in result.keywords
+        assert "painting" in result.keywords
+
+    def test_no_change_when_clean(self):
+        result = self._make_result(["courage", "honor", "duty"])
+        _clean_keywords(result, "Napoleon")
+        assert result.keywords == ["courage", "honor", "duty"]
+
+    def test_preserves_order(self):
+        result = self._make_result(["a", "life", "b", "existence", "c"])
+        _clean_keywords(result, "Nobody")
+        assert result.keywords == ["a", "b", "c"]
+
+
+class TestCleanCategories:
+    """Tests for _clean_categories post-processing."""
+
+    CANONICAL = ("Politics", "War", "Philosophy", "Spirituality", "Business",
+                 "Health", "Art", "Literature", "Society", "Justice", "Nature",
+                 "Science", "Education")
+
+    def _make_result(self, categories, quote_id=1):
+        return TagResult(
+            quote_id=quote_id, keywords=["test"],
+            categories=categories, author_type="person",
+            religious_sentiment=None,
+        )
+
+    def test_valid_categories_unchanged(self):
+        result = self._make_result(["Politics", "War"])
+        _clean_categories(result, frozenset(self.CANONICAL),
+                         {c.lower(): c for c in self.CANONICAL})
+        assert result.categories == ["Politics", "War"]
+
+    def test_case_insensitive_correction(self):
+        result = self._make_result(["politics", "WAR"])
+        _clean_categories(result, frozenset(self.CANONICAL),
+                         {c.lower(): c for c in self.CANONICAL})
+        assert result.categories == ["Politics", "War"]
+
+    def test_fuzzy_correction_religion_to_spirituality(self):
+        result = self._make_result(["Religion"])
+        _clean_categories(result, frozenset(self.CANONICAL),
+                         {c.lower(): c for c in self.CANONICAL})
+        assert result.categories == ["Spirituality"]
+
+    def test_fuzzy_correction_economics_to_business(self):
+        result = self._make_result(["Economics"])
+        _clean_categories(result, frozenset(self.CANONICAL),
+                         {c.lower(): c for c in self.CANONICAL})
+        assert result.categories == ["Business"]
+
+    def test_fuzzy_correction_psychology_to_health(self):
+        result = self._make_result(["Psychology", "Science"])
+        _clean_categories(result, frozenset(self.CANONICAL),
+                         {c.lower(): c for c in self.CANONICAL})
+        assert result.categories == ["Health", "Science"]
+
+    def test_drops_truly_invalid_category(self):
+        result = self._make_result(["Politics", "Xyzzy"])
+        _clean_categories(result, frozenset(self.CANONICAL),
+                         {c.lower(): c for c in self.CANONICAL})
+        assert result.categories == ["Politics"]
+
+    def test_deduplicates_after_correction(self):
+        """If fuzzy correction creates a duplicate, deduplicate."""
+        result = self._make_result(["Spirituality", "Religion"])
+        _clean_categories(result, frozenset(self.CANONICAL),
+                         {c.lower(): c for c in self.CANONICAL})
+        assert result.categories == ["Spirituality"]
+
+
+class TestPostProcessResults:
+    """Integration test for _post_process_results."""
+
+    CANONICAL = ("Politics", "War", "Courage", "Spirituality", "Business",
+                 "Health", "Art", "Literature", "Society", "Philosophy")
+
+    def test_full_pipeline(self):
+        results = [
+            TagResult(
+                quote_id=42,
+                keywords=["war", "napoleon", "life", "strategy", "leadership"],
+                categories=["War", "Religion"],
+                author_type="person",
+                religious_sentiment=None,
+            ),
+        ]
+        quotes = [{"id": 42, "author": "Napoleon", "text": "In war..."}]
+        _post_process_results(results, quotes, tuple(self.CANONICAL))
+
+        r = results[0]
+        # "life" banned, "napoleon" is author name → both stripped
+        assert "life" not in r.keywords
+        assert "napoleon" not in r.keywords
+        assert "war" in r.keywords
+        assert "strategy" in r.keywords
+        assert "leadership" in r.keywords
+        # "Religion" → "Spirituality"
+        assert r.categories == ["War", "Spirituality"]

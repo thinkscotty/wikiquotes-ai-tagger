@@ -81,6 +81,21 @@ class PromptConfig:
 
 
 @dataclass(frozen=True)
+class CalibrationExample:
+    text: str
+    author: str
+    score: int
+    reason: str
+
+
+@dataclass(frozen=True)
+class ScoringPromptConfig:
+    system_prompt: str = ""
+    user_prompt_template: str = ""
+    calibration: tuple[CalibrationExample, ...] = ()
+
+
+@dataclass(frozen=True)
 class AppConfig:
     api: ApiConfig = field(default_factory=ApiConfig)
     prompts: PromptConfig = field(default_factory=PromptConfig)
@@ -132,4 +147,43 @@ def load_config(path: Path = CONFIG_DEFAULT_PATH) -> AppConfig:
         data_dir=Path(raw.get("data_dir", "data")),
         db_path=Path(raw.get("db_path", "data/quotes.db")),
         categories=categories,
+    )
+
+
+SCORING_PROMPT_DEFAULT_PATH = Path("scoring_prompt.toml")
+
+
+def load_scoring_config(path: Path = SCORING_PROMPT_DEFAULT_PATH) -> ScoringPromptConfig:
+    """Load scoring prompt configuration from a TOML file.
+
+    Raises FileNotFoundError if the file doesn't exist — scoring config
+    is required when running the score command, unlike main config.
+    """
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Scoring prompt config not found: {path}\n"
+            "Create a scoring_prompt.toml file (see README for format)."
+        )
+
+    with open(path, "rb") as f:
+        raw = tomllib.load(f)
+
+    prompts_raw = raw.get("prompts", {})
+
+    calibration_raw = raw.get("calibration", [])
+    calibration = tuple(
+        CalibrationExample(
+            text=ex.get("text", ""),
+            author=ex.get("author", ""),
+            score=int(ex.get("score", 5)),
+            reason=ex.get("reason", ""),
+        )
+        for ex in calibration_raw
+        if ex.get("text")
+    )
+
+    return ScoringPromptConfig(
+        system_prompt=prompts_raw.get("system_prompt", ""),
+        user_prompt_template=prompts_raw.get("user_prompt_template", ""),
+        calibration=calibration,
     )

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS quotes (
     batch_id INTEGER,
     author_type TEXT,
     religious_sentiment TEXT,
+    quality INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_quotes_text_author ON quotes(text, author);
@@ -52,6 +53,8 @@ def upgrade_schema(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE quotes ADD COLUMN author_type TEXT")
     if "religious_sentiment" not in existing:
         conn.execute("ALTER TABLE quotes ADD COLUMN religious_sentiment TEXT")
+    if "quality" not in existing:
+        conn.execute("ALTER TABLE quotes ADD COLUMN quality INTEGER")
     conn.commit()
 
 
@@ -130,6 +133,73 @@ def update_tagged(
          author_type, religious_sentiment, quote_id),
     )
     return cursor.rowcount > 0
+
+
+def get_unscored_batch(conn: sqlite3.Connection, batch_size: int) -> list[dict]:
+    """Fetch up to batch_size tagged quotes that have no quality score."""
+    cursor = conn.execute(
+        "SELECT id, text, author, source_work FROM quotes "
+        "WHERE status = 'tagged' AND quality IS NULL ORDER BY id LIMIT ?",
+        (batch_size,),
+    )
+    return [dict(row) for row in cursor.fetchall()]
+
+
+def get_random_unscored_ids(conn: sqlite3.Connection, count: int) -> list[int]:
+    """Fetch `count` random quote IDs from the unscored tagged pool."""
+    cursor = conn.execute(
+        "SELECT id FROM quotes WHERE status = 'tagged' AND quality IS NULL "
+        "ORDER BY RANDOM() LIMIT ?",
+        (count,),
+    )
+    return [row[0] for row in cursor.fetchall()]
+
+
+def update_quality(conn: sqlite3.Connection, quote_id: int, quality: int) -> bool:
+    """Set the quality score for a single quote. Returns True if a row was updated."""
+    cursor = conn.execute(
+        "UPDATE quotes SET quality = ? WHERE id = ?",
+        (quality, quote_id),
+    )
+    return cursor.rowcount > 0
+
+
+def reset_scores(conn: sqlite3.Connection) -> int:
+    """Reset all quality scores to NULL. Returns count of rows reset."""
+    count = conn.execute("SELECT COUNT(*) FROM quotes WHERE quality IS NOT NULL").fetchone()[0]
+    if count > 0:
+        conn.execute("UPDATE quotes SET quality = NULL WHERE quality IS NOT NULL")
+        conn.commit()
+    return count
+
+
+def get_scoring_stats(conn: sqlite3.Connection) -> dict:
+    """Return scoring statistics: scored/unscored counts, average, distribution."""
+    tagged = conn.execute("SELECT COUNT(*) FROM quotes WHERE status = 'tagged'").fetchone()[0]
+    scored = conn.execute(
+        "SELECT COUNT(*) FROM quotes WHERE status = 'tagged' AND quality IS NOT NULL"
+    ).fetchone()[0]
+    unscored = tagged - scored
+
+    avg_quality = None
+    distribution: dict[int, int] = {}
+    if scored > 0:
+        avg_quality = conn.execute(
+            "SELECT AVG(quality) FROM quotes WHERE quality IS NOT NULL"
+        ).fetchone()[0]
+        cursor = conn.execute(
+            "SELECT quality, COUNT(*) as cnt FROM quotes "
+            "WHERE quality IS NOT NULL GROUP BY quality ORDER BY quality"
+        )
+        distribution = {row[0]: row[1] for row in cursor.fetchall()}
+
+    return {
+        "tagged": tagged,
+        "scored": scored,
+        "unscored": unscored,
+        "avg_quality": round(avg_quality, 1) if avg_quality is not None else None,
+        "distribution": distribution,
+    }
 
 
 def reset_tagged(conn: sqlite3.Connection) -> tuple[int, int]:

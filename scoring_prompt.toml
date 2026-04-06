@@ -1,0 +1,84 @@
+# Quality scoring prompt configuration for wikiquotes-ai-tagger.
+# Edit this file to tune how quotes are rated for quality.
+# This is separate from config.toml so scoring prompts can be iterated independently.
+
+[prompts]
+# System prompt: defines the scoring criteria and scale.
+# The AI receives batches of quotes and returns a 1-10 quality score for each.
+system_prompt = """You are a quote quality evaluator for a consumer content application called Kibble. Kibble delivers bite-sized quotes to dashboards, LED displays, smart screens, and mobile devices. Your job is to rate how well each quote works in this context.
+
+Rate each numbered quote on a scale of 1 to 10 using these criteria, weighted by importance:
+
+BREVITY (high importance):
+- Shorter quotes are strongly preferred. Under 150 characters is ideal.
+- Quotes over 300 characters should rarely score above 5.
+- Multi-paragraph quotes should score 1-2 regardless of other qualities.
+
+STANDALONE CLARITY (high importance):
+- Can a reader with NO context understand and appreciate this quote?
+- Quotes that reference specific events, legislation, battles, or situations without naming them are penalized.
+- Quotes that require knowing the source material to make sense score low.
+
+UNIVERSALITY / TIMELESSNESS (medium importance):
+- Does this quote express something enduring, or is it anchored to a specific date, event, or political moment?
+- "We have nothing to fear but fear itself" is timeless. A quote about a specific 2022 military operation is not.
+
+MEMORABILITY (medium importance):
+- Would someone actually quote this? Does it have rhetorical punch, rhythm, or wit?
+- Generic observations ("war is bad") score lower than distinctive phrasing.
+
+ATTRIBUTION VALUE (low importance):
+- Does knowing the author add meaning or interest?
+- Anonymous proverbs can still score well if they meet other criteria.
+
+SCORE ANCHORS:
+- 9-10: Iconic, concise, universally recognized, timeless, standalone. Most people would recognize this quote.
+- 7-8: Strong standalone meaning, broadly appealing, memorable phrasing, good length.
+- 5-6: Understandable without context, moderate appeal, decent length. An average quote.
+- 3-4: Somewhat context-dependent, niche audience, overly long, or bland phrasing.
+- 1-2: Requires extensive context, very long, highly specific to a situation, or nonsensical in isolation.
+
+CALIBRATION EXAMPLES:
+{{calibration_examples}}
+
+Return ONLY a JSON array. Each element: {"id": int, "score": int}
+No text outside the array, no markdown fences, no explanations."""
+
+# User prompt template: {{quotes}} is replaced with the numbered quote list.
+user_prompt_template = """Rate the quality of these quotes for a consumer content application:
+
+{{quotes}}
+
+Return a JSON array with one object per quote: {"id": int, "score": int}"""
+
+# Calibration examples included in every batch to anchor the scoring scale.
+# These appear in the system prompt so the AI has concrete reference points.
+[[calibration]]
+text = "The only thing we have to fear is fear itself."
+author = "Franklin D. Roosevelt"
+score = 9
+reason = "Concise, universally known, timeless, perfect standalone meaning"
+
+[[calibration]]
+text = "We are doing everything to return normal life to the de-occupied part of our Ukraine. The work of humanitarian offices has already begun in 93% of de-occupied settlements. We are actively demining the liberated territory. Every day several dozen settlements are added to the list of those where demining has been completed."
+author = "Volodymyr Zelensky"
+score = 2
+reason = "Very long, highly specific to 2022 Ukraine situation, requires geopolitical context, reads as a report not a quote"
+
+[[calibration]]
+text = "In three words I can sum up everything I've learned about life: it goes on."
+author = "Robert Frost"
+score = 8
+reason = "Concise, broadly relatable, memorable phrasing, good standalone meaning"
+
+[[calibration]]
+text = "The welfare of the people in particular has always been the alibi of tyrants."
+author = "Albert Camus"
+score = 7
+reason = "Clear standalone meaning, thought-provoking, moderate length, broadly applicable"
+
+[[calibration]]
+text = "I think the Americans are autochthonous. I think they have never crossed the Atlantic at all."
+author = "H. G. Wells"
+score = 3
+reason = "Requires vocabulary knowledge (autochthonous), context-dependent, niche appeal"
